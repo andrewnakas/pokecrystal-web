@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- connect-src 'self' blob: data: is the browser-enforced half of "never uploaded". -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob:; connect-src 'self' blob: data:; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; media-src 'self' blob: data:; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Pokémon Crystal — bring your own ROM</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2314120c'/%3E%3Ccircle cx='8' cy='8' r='4.5' fill='%237fb8d8'/%3E%3C/svg%3E">
+<script src="no-phone-home.js"></script>
+<style>
+  :root { --bg:#14120c; --panel:#1d1a12; --fg:#efe9d8; --dim:#9e978a; --gold:#7fb8d8; --line:#332e22; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font:14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #wrap { display:flex; flex-direction:column; height:100%; }
+  #game { flex:1; min-height:0; background:#000; }
+  #bar { padding:8px 14px; color:var(--dim); font-size:12px; display:flex; gap:18px;
+    flex-wrap:wrap; align-items:baseline; border-top:1px solid var(--line); }
+  #bar b { color:var(--fg); font-weight:600; }
+  code, #sha { font:11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--dim); }
+
+  /* ---- ROM picker ---- */
+  #pick { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    padding:16px; background:radial-gradient(60% 60% at 50% 35%, #241f14, var(--bg)); z-index:10; }
+  #card { width:min(640px, 100%); background:var(--panel); border:1px solid var(--line);
+    border-radius:14px; padding:22px 24px 20px; }
+  h1 { margin:0 0 2px; font-size:21px; letter-spacing:.01em; }
+  h1 span { color:var(--gold); }
+  .sub { margin:0 0 18px; color:var(--dim); font-size:13px; }
+  #drop { border:1.5px dashed #4a422e; border-radius:11px; padding:26px 18px; text-align:center;
+    cursor:pointer; transition:border-color .15s, background .15s; }
+  #drop.hot { border-color:var(--gold); background:#241f14; }
+  #drop .big { font-size:15px; color:var(--fg); margin-bottom:5px; }
+  #drop .small { color:var(--dim); font-size:12px; }
+  #file { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+  ul.notes { margin:16px 0 0; padding-left:18px; color:var(--dim); font-size:12px; }
+  ul.notes li { margin:3px 0; }
+  ul.notes b { color:var(--fg); font-weight:600; }
+  #err { margin-top:12px; color:#e6734f; font-size:12.5px; display:none; }
+  #ok { margin-top:12px; color:#8fbf6a; font-size:12.5px; display:none; }
+  .keys { margin-top:14px; padding-top:12px; border-top:1px solid var(--line);
+    color:var(--dim); font-size:12px; }
+  kbd { border:1px solid #4a422e; border-bottom-width:2px; border-radius:4px; padding:0 5px;
+    font:11px ui-monospace, monospace; color:var(--fg); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="game"></div>
+  <div id="bar">
+    <span id="b-title"><b>Pokémon Crystal</b></span>
+    <span id="b-sha"></span>
+    <span id="b-save">save: waiting for first write</span>
+    <span id="b-priv">ROM is in this tab's memory only</span>
+  </div>
+</div>
+
+<div id="pick">
+  <div id="card">
+    <h1>Pokémon <span>Crystal</span></h1>
+    <p class="sub">Built from the <code>pret/pokecrystal</code> disassembly. Load the ROM you built, or your own cartridge dump.</p>
+
+    <div id="drop" tabindex="0" role="button" aria-label="Choose a ROM file">
+      <div class="big">Choose a <code>.gbc</code> file, or drop one here</div>
+      <div class="small">pokecrystal.gbc &middot; pokecrystal11.gbc &middot; 2,097,152 bytes</div>
+    </div>
+    <input type="file" id="file" accept=".gbc,.gb,application/octet-stream">
+
+    <div id="err"></div>
+    <div id="ok"></div>
+
+    <ul class="notes">
+      <li>The file is read with <code>FileReader</code> and handed straight to the emulator core. <b>It is never uploaded.</b> There is no server side here — the page refuses any network request that is not to its own origin, and its content-security-policy makes the browser refuse one too.</li>
+      <li>Battery saves (the in-game <b>SAVE</b>) persist in this browser's IndexedDB, keyed per game, and survive reload. Clearing site data clears them.</li>
+      <li>No ROM, and nothing extracted from one, ships with this page.</li>
+    </ul>
+
+    <div class="keys">
+      <kbd>&larr;&uarr;&darr;&rarr;</kbd> D-pad &middot; <kbd>X</kbd> A &middot; <kbd>Z</kbd> B &middot;
+      <kbd>Enter</kbd> Start &middot; <kbd>Shift</kbd> Select &middot; gamepads and on-screen buttons work too
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var Q = new URLSearchParams(location.search);
+  var ROM_BYTES = 2097152;
+
+  // sha1 -> the ROM pret/pokecrystal builds. Everything else still loads.
+  var KNOWN = {
+    "f4cd194bdee0d04ca4eac29e09b8e4e9d818c133": { slug: "pokecrystal", title: "Pokémon Crystal (UE) v1.0" },
+    "f2f52230b536214ef7c9924f483392993e226cfb": { slug: "pokecrystal11", title: "Pokémon Crystal (UE) v1.1" }
+  };
+
+  var el = function (id) { return document.getElementById(id); };
+  var pick = el("pick"), drop = el("drop"), fileInput = el("file"),
+      errBox = el("err"), okBox = el("ok");
+
+  function fail(msg) {
+    errBox.textContent = msg; errBox.style.display = "block"; okBox.style.display = "none";
+    console.log("GS: reject " + msg);
+  }
+
+  function hex(buf) {
+    var b = new Uint8Array(buf), s = "";
+    for (var i = 0; i < b.length; i++) s += (b[i] < 16 ? "0" : "") + b[i].toString(16);
+    return s;
+  }
+
+  // ---- the one entry point for ROM bytes. The file input, the drop handler and
+  // ---- the ?rom= test hook all funnel through here.
+  async function loadRom(bytes, originalName) {
+    if (!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes);
+    if (bytes.length !== ROM_BYTES) {
+      fail("That file is " + bytes.length.toLocaleString() + " bytes. A Crystal ROM is " +
+           ROM_BYTES.toLocaleString() + " bytes (2 MiB). Wrong file, or a trimmed/headered dump.");
+      return false;
+    }
+
+    // crypto.subtle only exists in a secure context (https:// or localhost). If the
+    // page is served over plain http from somewhere else we still want a stable
+    // per-ROM save name, so fall back to a cheap checksum rather than to nothing.
+    var sha1 = null, fallback = null;
+    try {
+      sha1 = hex(await crypto.subtle.digest("SHA-1", bytes));
+    } catch (e) {
+      var h = 2166136261;
+      for (var i = 0; i < bytes.length; i++) h = Math.imul(h ^ bytes[i], 16777619);
+      fallback = (h >>> 0).toString(16);
+    }
+    var known = sha1 ? KNOWN[sha1] : null;
+    var slug = known ? known.slug : "gbc-" + (sha1 ? sha1.slice(0, 12) : fallback);
+    var title = known ? known.title : (originalName || "Unrecognised ROM");
+
+    // textContent, not innerHTML: `title` can be a filename the user chose, and a
+    // filename is not markup.
+    okBox.textContent = "Loaded " + title;
+    okBox.style.display = "block"; errBox.style.display = "none";
+    var b = document.createElement("b"); b.textContent = title;
+    el("b-title").replaceChildren(b);
+    var code = document.createElement("code");
+    code.id = "sha";
+    code.textContent = sha1
+      ? "sha1 " + sha1 + (known ? "  ✓ matches pret/pokecrystal"
+                                : "  · not a hash pret/pokecrystal builds")
+      : "sha1 unavailable (needs https:// or localhost) · saves keyed as " + slug;
+    el("b-sha").replaceChildren(code);
+    console.log("GS: rom sha1=" + sha1 + " slug=" + slug + " known=" + !!known);
+
+    boot(bytes, slug, title);
+    return true;
+  }
+
+  // ---------------------------------------------------------------- emulator
+  function boot(bytes, slug, title) {
+    pick.remove();
+
+    // Passing a File (a Blob) means EmulatorJS reads it straight out of memory —
+    // downloadFile() short-circuits through toData() and never touches the network.
+    // The name matters: it is what the core's .srm save file gets named, so a
+    // canonical per-game name is what makes saves survive a reload.
+    window.EJS_gameUrl = new File([bytes], slug + ".gbc", { type: "application/octet-stream" });
+    window.EJS_gameName = slug;
+    window.EJS_player = "#game";
+    window.EJS_core = "gb";                 // -> gambatte
+    window.EJS_pathtodata = "data/";
+    window.EJS_startOnLoaded = true;
+    window.EJS_disableDatabases = true;     // do not cache the ROM to disk; saves are unaffected
+    window.EJS_CacheLimit = 0;              // belt and braces: never copy the ROM to IndexedDB
+    window.EJS_threads = false;
+    window.EJS_color = "#7fb8d8";
+    window.EJS_volume = Q.has("mute") ? 0 : 0.5;
+    window.EJS_controlScheme = "gb";
+    window.EJS_defaultControls = {
+      0: {
+        8: { value: "x",           value2: "BUTTON_1" },      // A
+        0: { value: "z",           value2: "BUTTON_3" },      // B
+        2: { value: "shift",       value2: "SELECT" },
+        3: { value: "enter",       value2: "START" },
+        4: { value: "up arrow",    value2: "DPAD_UP" },
+        5: { value: "down arrow",  value2: "DPAD_DOWN" },
+        6: { value: "left arrow",  value2: "DPAD_LEFT" },
+        7: { value: "right arrow", value2: "DPAD_RIGHT" }
+      }, 1: {}, 2: {}, 3: {}
+    };
+
+    window.EJS_onGameStart = function () { onStart(slug); };
+
+    // --- EmulatorJS 4.2.3 destroys the battery save on every page exit. ---
+    //
+    // emulator.js:1092 registers a `beforeunload` listener that fires its "exit"
+    // event; GameManager's exit handler (GameManager.js:44) does
+    //     saveSaveFiles(); restart(); saveSaveFiles(); toggleMainLoop(0);
+    //     FS.unmount("/data/saves");
+    // and the unmount empties the IndexedDB store that /data/saves is backed by.
+    // Measured, not inferred: with that one listener suppressed, pokegold.srm and
+    // pokegold.rtc are still there after a navigation; without it, the store is {}.
+    // Stock EmulatorJS therefore only keeps a save for as long as the tab is open.
+    //
+    // So: drop its beforeunload listener and do the save-out ourselves, in an order
+    // that writes before it lets go, and never unmounts.
+    var realAdd = window.addEventListener.bind(window);
+    window.addEventListener = function (type, fn, opts) {
+      if (type === "beforeunload" && !(fn && fn.__keep)) return;
+      return realAdd(type, fn, opts);
+    };
+
+    var s = document.createElement("script");
+    s.src = "data/loader.js";
+    document.body.appendChild(s);
+  }
+
+  // ------------------------------------------------------------ save persistence
+  // The core writes <slug>.srm into /data/saves, which GameManager mounts as IDBFS
+  // with autoPersist. We still flush on a timer: autoPersist debounces, and a tab
+  // left alone mid-debounce would otherwise lose the write.
+  //
+  // boot() has already suppressed EmulatorJS's own beforeunload handler, which would
+  // otherwise unmount /data/saves on the way out and empty the IndexedDB store. We
+  // register our own in its place: it writes, syncs, and never unmounts. Every flush
+  // is still guarded by alive(), because syncing a directory that is not an IDBFS
+  // mount makes IDBFS's reconcile delete every remote entry it cannot see locally.
+  function installSaveFlush(emu, slug) {
+    var lastLen = -1, lastSum = -1;
+
+    function cheapSum(a) {               // enough to notice SRAM changed
+      var h = 0;
+      for (var i = 0; i < a.length; i += 7) h = (h * 31 + a[i]) | 0;
+      return h;
+    }
+
+    // true only while the emulator is running AND /data/saves is still the IDBFS
+    // mount. After EmulatorJS's exit handler unmounts it, syncing is destructive.
+    function alive() {
+      try {
+        var node = emu.gameManager.FS.lookupPath("/data/saves").node;
+        return !!(emu.started && node.mount && node.mount.opts && node.mount.opts.autoPersist);
+      } catch (e) { return false; }
+    }
+
+    function flush(why, force) {
+      return new Promise(function (resolve) {
+        if (!alive()) { console.log("GS: skip flush (" + why + "): mount is gone"); return resolve(null); }
+        var data = null;
+        try { data = emu.gameManager.getSaveFile(); } catch (e) { return resolve(null); }
+        if (!data || !data.length) return resolve(null);
+        var sum = cheapSum(data);
+        if (!force && data.length === lastLen && sum === lastSum) return resolve({ skipped: true, len: data.length, sum: sum });
+        lastLen = data.length; lastSum = sum;
+        try {
+          emu.gameManager.FS.syncfs(false, function () {
+            el("b-save").textContent = "save: " + (data.length / 1024) + " KiB stored in this browser · " +
+              new Date().toLocaleTimeString();
+            console.log("GS: save flushed (" + why + ") bytes=" + data.length + " sum=" + sum);
+            resolve({ skipped: false, len: data.length, sum: sum });
+          });
+        } catch (e) { console.warn("GS: syncfs failed", e); resolve(null); }
+      });
+    }
+
+    setInterval(function () { flush("tick"); }, 10000);
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") flush("hidden");
+    });
+
+    // Our own beforeunload, marked so the filter installed in boot() lets it through.
+    // Synchronous work only: the page may not live long enough for syncfs's callback,
+    // but saveSaveFiles() has already put the bytes in the FS and autoPersist will
+    // push them, and nothing here unmounts anything.
+    function onUnload() {
+      if (!alive()) return;
+      try {
+        emu.gameManager.saveSaveFiles();
+        emu.gameManager.FS.syncfs(false, function () {});
+      } catch (e) { /* leaving anyway */ }
+    }
+    onUnload.__keep = true;
+    window.addEventListener("beforeunload", onUnload);
+
+    window.__flushSave = flush;          // the test calls this directly
+    flush("boot");                       // reports a restored save, if there is one
+  }
+
+  function onStart(slug) {
+    var emu = window.EJS_emulator;
+    var t0 = performance.now();
+    console.log("GS: started");
+    installSaveFlush(emu, slug);
+
+    if (Q.has("mute")) { try { emu.setVolume(0); } catch (e) {} }
+
+    // ---- test hooks (same shape as the other sites in this fleet) ----
+    // ?keys=t:id:dur,...   press button id at t seconds for dur seconds
+    // ?mash=from:to:period press A repeatedly between two times
+    // ?dump=t1,t2,...      log canvas PNGs as data URLs at those times
+    // ?hb                  heartbeat
+    var press = function (id, dur) {
+      emu.gameManager.simulateInput(0, id, 1);
+      setTimeout(function () { emu.gameManager.simulateInput(0, id, 0); }, (dur || 0.1) * 1000);
+    };
+    window.__press = press;
+
+    (Q.get("keys") || "").split(",").filter(Boolean).forEach(function (e) {
+      var p = e.split(":");
+      setTimeout(function () { press(+p[1], +(p[2] || 0.1)); }, +p[0] * 1000);
+    });
+
+    if (Q.has("mash")) {
+      var m = Q.get("mash").split(":").map(Number);     // from:to:period (seconds)
+      var from = m[0], to = m[1], period = m[2] || 0.5;
+      for (var t = from; t <= to; t += period) {
+        (function (tt) { setTimeout(function () { press(8, 0.12); }, tt * 1000); })(t);
+      }
+    }
+
+    if (Q.has("dump")) {
+      var times = Q.get("dump").split(",").map(Number), chain = Promise.resolve();
+      var shot = function (s) {
+        return new Promise(function (res) {
+          var wait = Math.max(0, t0 + s * 1000 - performance.now());
+          setTimeout(function () {
+            var done = setTimeout(function () { console.log("GS: shot " + s + " timed out"); res(); }, 8000);
+            try {
+              emu.screenshot(function (blob) {
+                var r = new FileReader();
+                r.onload = function () {
+                  var d = r.result, n = 8000;
+                  for (var o = 0; o < d.length; o += n) console.log("GSPNG:" + s + ":" + d.slice(o, o + n));
+                  console.log("GSPNG:" + s + ":END");
+                  clearTimeout(done); res();
+                };
+                r.readAsDataURL(blob);
+              }, "canvas", "png", 1);
+            } catch (e) { console.log("GS: shot " + s + " failed " + e); clearTimeout(done); res(); }
+          }, wait);
+        });
+      };
+      times.forEach(function (s) { chain = chain.then(function () { return shot(s); }); });
+    }
+
+    if (Q.has("hb")) setInterval(function () {
+      console.log("GSHB " + ((performance.now() - t0) / 1000).toFixed(0) + "s frame=" +
+                  emu.gameManager.getFrameNum());
+    }, 5000);
+  }
+
+  // ------------------------------------------------------------------- picker
+  drop.addEventListener("click", function () { fileInput.click(); });
+  drop.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); }
+  });
+  fileInput.addEventListener("change", async function () {
+    var f = fileInput.files && fileInput.files[0];
+    if (f) await loadRom(await f.arrayBuffer(), f.name);
+  });
+  ["dragenter", "dragover"].forEach(function (k) {
+    drop.addEventListener(k, function (e) { e.preventDefault(); drop.classList.add("hot"); });
+  });
+  ["dragleave", "drop"].forEach(function (k) {
+    drop.addEventListener(k, function (e) { e.preventDefault(); drop.classList.remove("hot"); });
+  });
+  drop.addEventListener("drop", async function (e) {
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (f) await loadRom(await f.arrayBuffer(), f.name);
+  });
+
+  // ?rom=<same-origin path> — local test hook only. The egress guard means this
+  // cannot reach another origin, so it is useless for hosting a ROM remotely.
+  window.__loadRom = loadRom;
+  if (Q.get("rom")) {
+    fetch(Q.get("rom")).then(function (r) { return r.arrayBuffer(); })
+      .then(function (b) { return loadRom(b, Q.get("rom").split("/").pop()); })
+      .catch(function (e) { fail("could not read " + Q.get("rom") + ": " + e); });
+  }
+})();
+</script>
+</body>
+</html>

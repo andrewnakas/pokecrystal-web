@@ -1,0 +1,22 @@
+# ---- ROMs and anything extracted from one. Never commit these. ----
+*.nes
+*.gb
+*.gbc
+*.sfc
+*.smc
+*.md
+*.gba
+*.z64
+*.v64
+*.n64
+*.bin
+*.gen
+*.srm
+*.sav
+*.state
+baserom*
+# ... but these are documents, not Mega Drive ROMs:
+!README.md
+!THIRD_PARTY.md
+!web/THIRD_PARTY.md
+!web/data/**/*.md
